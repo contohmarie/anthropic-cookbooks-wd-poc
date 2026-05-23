@@ -1,0 +1,100 @@
+name: Cookbooks workflow_dispatch MCP PoC
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to check out via refs/pull/<PR>/head"
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head by workflow_dispatch input
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ inputs.pr_number }}/head
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code@2.1.150
+
+      - name: Validate PR-controlled project MCP startup
+        env:
+          ANTHROPIC_API_KEY: sk-ant-api03-REDACTED-TEST-ONLY
+          GITHUB_TOKEN: ghs_REDACTED_TEST_ONLY
+          GH_TOKEN: ghs_REDACTED_TEST_ONLY
+          ANTHROPIC_BASE_URL: http://127.0.0.1:9
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: 127.0.0.1,localhost
+          POC_MARKER_PATH: ${{ runner.temp }}/cookbooks-project-mcp-marker.txt
+        run: |
+          set -euo pipefail
+
+          echo "workflow_dispatch_pr_number_checkout=true"
+          test -f .mcp.json
+          echo "pr_controlled_mcp_json_present=true"
+
+          EMPTY_MCP="$RUNNER_TEMP/empty-mcp.json"
+          DEFAULT_OUT="$RUNNER_TEMP/default-claude-output.txt"
+          STRICT_OUT="$RUNNER_TEMP/strict-claude-output.txt"
+          printf '{"mcpServers":{}}\n' > "$EMPTY_MCP"
+
+          run_claude() {
+            local outfile="$1"
+            shift
+            rm -f "$POC_MARKER_PATH" "$outfile"
+            set +e
+            timeout 10s claude -p "controlled GitHub Actions validation; API success is not required" \
+              --output-format json \
+              --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(echo:*),Read,Glob,Grep,WebFetch" \
+              "$@" > "$outfile" 2>&1
+            local status=$?
+            set -e
+            echo "claude_exit_status=$status"
+          }
+
+          run_claude "$DEFAULT_OUT"
+
+          default_executed=false
+          api_key_seen=false
+          github_token_seen=false
+          if [ -f "$POC_MARKER_PATH" ]; then
+            default_executed=true
+            grep -q "anthropic_api_key_dummy_seen=true" "$POC_MARKER_PATH" && api_key_seen=true
+            grep -q "github_token_dummy_seen=true" "$POC_MARKER_PATH" && github_token_seen=true
+            cp "$POC_MARKER_PATH" "$RUNNER_TEMP/default-marker.txt"
+          fi
+
+          run_claude "$STRICT_OUT" --strict-mcp-config --mcp-config "$EMPTY_MCP"
+
+          strict_blocked=true
+          if [ -f "$POC_MARKER_PATH" ]; then
+            strict_blocked=false
+          fi
+
+          echo "project_mcp_stdio_executed=$default_executed"
+          echo "mcp_process_inherited_dummy_anthropic_api_key=$api_key_seen"
+          echo "mcp_process_inherited_dummy_github_token=$github_token_seen"
+          echo "strict_empty_mcp_config_blocks_project_mcp=$strict_blocked"
+          echo "no_successful_anthropic_api_required=true"
+
+          echo "--- default marker ---"
+          cat "$RUNNER_TEMP/default-marker.txt"
+
+          echo "--- default claude output first lines ---"
+          sed -n '1,30p' "$DEFAULT_OUT" || true
+
+          echo "--- strict claude output first lines ---"
+          sed -n '1,30p' "$STRICT_OUT" || true
+
+          test "$default_executed" = "true"
+          test "$api_key_seen" = "true"
+          test "$github_token_seen" = "true"
+          test "$strict_blocked" = "true"
+
