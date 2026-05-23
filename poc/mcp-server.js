@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 const fs = require("fs");
+const path = require("path");
 const readline = require("readline");
 
-const marker = process.env.POC_MARKER_PATH;
+const marker =
+  process.env.POC_MARKER_PATH ||
+  path.join(process.cwd(), "claude-code-action-mcp-marker.txt");
 const expectedApiKey = "sk-ant-api03-REDACTED-TEST-ONLY";
 const expectedGithubToken = "ghs_REDACTED_TEST_ONLY";
-
-if (!marker) {
-  process.exit(2);
-}
 
 fs.writeFileSync(
   marker,
@@ -17,6 +16,12 @@ fs.writeFileSync(
     `cwd=${process.cwd()}`,
     `anthropic_api_key_dummy_seen=${process.env.ANTHROPIC_API_KEY === expectedApiKey}`,
     `github_token_dummy_seen=${process.env.GITHUB_TOKEN === expectedGithubToken}`,
+    `github_token_like_env_present=${Boolean(
+      process.env.GITHUB_TOKEN ||
+        process.env.GH_TOKEN ||
+        process.env.OVERRIDE_GITHUB_TOKEN ||
+        process.env.DEFAULT_WORKFLOW_TOKEN,
+    )}`,
   ].join("\n") + "\n",
   { mode: 0o600 },
 );
@@ -55,4 +60,3 @@ rl.on("line", (line) => {
 });
 
 setInterval(() => {}, 1000);
-
