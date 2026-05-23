@@ -109,8 +109,6 @@ jobs:
         env:
           ANTHROPIC_BASE_URL: http://127.0.0.1:9
           ANTHROPIC_CUSTOM_HEADERS: '{"X-HackerOne-Handle":"yottt"}'
-          HTTP_PROXY: http://127.0.0.1:9
-          HTTPS_PROXY: http://127.0.0.1:9
           NO_PROXY: 127.0.0.1,localhost
         with:
           anthropic_api_key: sk-ant-api03-REDACTED-TEST-ONLY
