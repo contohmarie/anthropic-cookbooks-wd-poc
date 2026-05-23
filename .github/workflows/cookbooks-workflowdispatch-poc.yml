@@ -98,3 +98,47 @@ jobs:
           test "$github_token_seen" = "true"
           test "$strict_blocked" = "true"
 
+      - name: Clear marker before real claude-code-action validation
+        run: rm -f claude-code-action-mcp-marker.txt
+
+      - name: Run anthropics/claude-code-action with dummy API configuration
+        id: claude_action
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_BASE_URL: http://127.0.0.1:9
+          ANTHROPIC_CUSTOM_HEADERS: '{"X-HackerOne-Handle":"yottt"}'
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+          NO_PROXY: 127.0.0.1,localhost
+        with:
+          anthropic_api_key: sk-ant-api03-REDACTED-TEST-ONLY
+          github_token: ${{ github.token }}
+          prompt: "Controlled validation. API success is not required."
+          claude_args: |
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(echo:*),Read,Glob,Grep,WebFetch"
+
+      - name: Validate claude-code-action marker
+        if: always()
+        run: |
+          set -euo pipefail
+
+          action_executed=false
+          action_api_key_seen=false
+          action_github_env_seen=false
+
+          if [ -f claude-code-action-mcp-marker.txt ]; then
+            action_executed=true
+            grep -q "anthropic_api_key_dummy_seen=true" claude-code-action-mcp-marker.txt && action_api_key_seen=true
+            grep -q "github_token_like_env_present=true" claude-code-action-mcp-marker.txt && action_github_env_seen=true
+          fi
+
+          echo "claude_code_action_project_mcp_stdio_executed=$action_executed"
+          echo "claude_code_action_mcp_process_inherited_dummy_anthropic_api_key=$action_api_key_seen"
+          echo "claude_code_action_mcp_process_has_github_token_like_env=$action_github_env_seen"
+          echo "--- claude-code-action marker ---"
+          cat claude-code-action-mcp-marker.txt
+
+          test "$action_executed" = "true"
+          test "$action_api_key_seen" = "true"
